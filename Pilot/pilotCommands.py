@@ -17,18 +17,16 @@
     execution.
 """
 
+__RCSID__ = "$Id$"
+
 import sys
 import os
 import time
 import stat
 import socket
-import urllib
-import tarfile
 import httplib
 
 from pilotTools import CommandBase
-
-__RCSID__ = "$Id$"
 
 
 class GetPilotVersion(CommandBase):
@@ -59,28 +57,25 @@ class CheckWorkerNode(CommandBase):
     """ Get host and local user info, and other basic checks, e.g. space available
     """
 
-    self.log.info( 'Uname      = %s' % " ".join( os.uname() ))
-    self.log.info( 'Host Name  = %s' % socket.gethostname())
-    self.log.info( 'Host FQDN  = %s' % socket.getfqdn())
-    self.log.info( 'WorkingDir = %s' % self.pp.workingDir)  # this could be different than rootPath
+    self.log.info('Uname      = %s' % " ".join(os.uname()))
+    self.log.info('Host Name  = %s' % socket.gethostname())
+    self.log.info('Host FQDN  = %s' % socket.getfqdn())
+    self.log.info('WorkingDir = %s' % self.pp.workingDir)  # this could be different than rootPath
 
     fileName = '/etc/redhat-release'
     if os.path.exists(fileName):
-      f = open(fileName, 'r')
-      self.log.info('RedHat Release = %s' % f.read().strip())
-      f.close()
+      with open(fileName, 'r') as f:
+        self.log.info('RedHat Release = %s' % f.read().strip())
 
     fileName = '/etc/lsb-release'
     if os.path.isfile(fileName):
-      f = open(fileName, 'r')
-      self.log.info('Linux release:\n%s' % f.read().strip())
-      f.close()
+      with open(fileName, 'r') as f:
+        self.log.info('Linux release:\n%s' % f.read().strip())
 
     fileName = '/proc/cpuinfo'
     if os.path.exists(fileName):
-      f = open(fileName, 'r')
-      cpu = f.readlines()
-      f.close()
+      with open(fileName, 'r') as f:
+        cpu = f.readlines()
       nCPU = 0
       for line in cpu:
         if line.find('cpu MHz') == 0:
@@ -93,9 +88,8 @@ class CheckWorkerNode(CommandBase):
 
     fileName = '/proc/meminfo'
     if os.path.exists(fileName):
-      f = open(fileName, 'r')
-      mem = f.readlines()
-      f.close()
+      with open(fileName, 'r') as f:
+        mem = f.readlines()
       freeMem = 0
       for line in mem:
         if line.find('MemTotal:') == 0:
@@ -149,6 +143,7 @@ class InstallDIRAC(CommandBase):
   def _setInstallOptions(self):
     """ Setup installation parameters
     """
+
     for o, v in self.pp.optList:
       if o in ('-b', '--build'):
         self.installOpts.append('-b')
@@ -158,6 +153,8 @@ class InstallDIRAC(CommandBase):
         self.installOpts.append('-e "%s"' % v)
       elif o == '-g' or o == '--grid':
         self.pp.gridVersion = v
+      elif o == '--dirac-os':
+        self.installOpts.append('--dirac-os')
       elif o == '-i' or o == '--python':
         self.pp.pythonVersion = v
       elif o == '-p' or o == '--platform':
@@ -180,9 +177,14 @@ class InstallDIRAC(CommandBase):
       self.installOpts.append('-p "%s"' % self.pp.platform)
     if self.pp.releaseProject:
       self.installOpts.append("-l '%s'" % self.pp.releaseProject)
+    if self.pp.modules:
+      self.installOpts.append("-m '%s'" % self.pp.modules)
 
     # The release version to install is a requirement
     self.installOpts.append('-r "%s"' % self.pp.releaseVersion)
+
+    # We clean the PYTHONPATH from the created bashrc
+    self.installOpts.append('--cleanPYTHONPATH')
 
     self.log.debug('INSTALL OPTIONS [%s]' % ', '.join(map(str, self.installOpts)))
 
@@ -250,53 +252,6 @@ class InstallDIRAC(CommandBase):
     self._setInstallOptions()
     self._locateInstallationScript()
     self._installDIRAC()
-
-
-class ReplaceDIRACCode(CommandBase):
-  """ This command will replace DIRAC code with the one taken from a different location.
-      This command is mostly for testing purposes, and should NOT be added in default configurations.
-
-      It uses -Y/--replaceDIRACCode option for specifying a TGZ archive with a URL which can be opened by
-      urllib.urlopen (on a webserver or a local .tgz file downloaded with the pilot directory.)
-
-      The TGZ file should be created by something equivalent to this
-        cd /cvmfs/lhcb.cern.ch/lib/lhcb/DIRAC/DIRAC_v6r17p33
-        tar zcvf /tmp/DIRACdev.tgz *
-      so the DIRAC directory itself AND the scripts directory at the same level are included and will be
-      unpacked in the ReplacementCode directory, which itself is added to PYTHONPATH. You must ensure that
-      the executable bits for scripts are retained when making the TGZ archive (they should be by default.)
-
-      You can include other packages (eg LHCbDIRAC) which should be found by Python, by including them at
-      that same top level when making the TGZ file.
-  """
-
-  def __init__(self, pilotParams):
-    """ c'tor
-    """
-    super(ReplaceDIRACCode, self).__init__(pilotParams)
-
-  def execute(self):
-    """ Download/untar a TGZ archive file
-    """
-    if not self.pp.replaceDIRACCode:
-      self.log.warn("No -Y/--replaceDIRACCode given so no action by ReplaceDIRACCode pilot command!")
-      return
-
-    os.mkdir(os.getcwd() + os.path.sep + 'ReplacementCode')
-
-    # Fetch and unpack the TGZ file
-    tar = tarfile.open(mode="r|gz", fileobj=urllib.urlopen(self.pp.replaceDIRACCode))
-    tar.extractall(os.getcwd() + os.path.sep + 'ReplacementCode')
-    tar.close()
-
-    # Add the ReplacementCode directory to the Python path
-    self.pp.installEnv['PYTHONPATH'] = os.getcwd() + os.path.sep + 'ReplacementCode' + \
-        ':' + self.pp.installEnv['PYTHONPATH']
-    self.pp.installEnv['PATH'] = os.getcwd() + os.path.sep + 'ReplacementCode' + \
-        os.path.sep + 'scripts:' + self.pp.installEnv['PATH']
-
-    self.log.info("TGZ file %s unpacked. PYTHONPATH updated to be %s and PATH updated to be %s" %
-                  (self.pp.replaceDIRACCode, self.pp.installEnv['PYTHONPATH'], self.pp.installEnv['PATH']))
 
 
 class ConfigureBasics(CommandBase):
@@ -442,18 +397,9 @@ class CheckCECapabilities(CommandBase):
     if resourceDict.get('Tag'):
       self.pp.tags += resourceDict['Tag']
 
-    self.pp.tags = list(set(self.pp.tags))
-    if self.pp.tags:
-      cfg.append('-o "/Resources/Computing/CEDefaults/Tag=%s"' % ','.join((str(x) for x in self.pp.tags)))
-
     # RequiredTags are like Tags.
     if resourceDict.get('RequiredTag'):
       self.pp.reqtags += resourceDict['RequiredTag']
-
-    self.pp.reqtags = list(set(self.pp.reqtags))
-    if self.pp.reqtags:
-      cfg.append('-o "/Resources/Computing/CEDefaults/RequiredTag=%s"' %
-                 ','.join((str(x) for x in self.pp.reqtags)))
 
     # LocalCE type for singularity
     if resourceDict.get('Container') in ["Singularity", "singularity"]:
@@ -523,7 +469,11 @@ class CheckWNCapabilities(CommandBase):
     if retCode:
       self.log.error("Could not get resource parameters [ERROR %d]" % retCode)
       self.exitWithError(retCode)
-    numberOfProcessors = 1
+
+    # We store payloadProcessors in the global parameters so that other
+    # commands can more easily use it (eg MultiLaunchAgent)
+    self.pp.payloadProcessors = 1
+
     try:
       result = result.split(' ')
       numberOfProcessorsOnWN = int(result[0])
@@ -532,19 +482,29 @@ class CheckWNCapabilities(CommandBase):
       self.log.error("Wrong Command output %s" % result)
       sys.exit(1)
 
-    cfg = []
     # If NumberOfProcessors or MaxRAM are defined in the resource configuration, these
     # values are preferred
     if "WholeNode" in self.pp.tags:
-      numberOfProcessors = numberOfProcessorsOnWN
+      self.pp.payloadProcessors = numberOfProcessorsOnWN
     if self.pp.maxNumberOfProcessors > 0:
-      numberOfProcessors = min(numberOfProcessorsOnWN, self.pp.maxNumberOfProcessors)
+      self.pp.payloadProcessors = min(numberOfProcessorsOnWN, self.pp.maxNumberOfProcessors)
 
-    if not numberOfProcessors:
+    if not self.pp.payloadProcessors:
       self.log.warn("Could not retrieve number of processors, assuming 1")
-      numberOfProcessors = 1
+      self.pp.payloadProcessors = 1
+
+    # Make sure the multiprocessor tags are present if not already there
+    if self.pp.payloadProcessors > 1:
+      if 'MultiProcessor' not in self.pp.tags:
+        self.pp.tags.append('MultiProcessor')
+      if 'MultiProcessor' not in self.pp.reqtags:
+        self.pp.reqtags.append('MultiProcessor')
+      if ('%dProcessors' % self.pp.payloadProcessors) not in self.pp.tags:
+        self.pp.tags.append('%dProcessors' % self.pp.payloadProcessors)
+
+    self.log.info('payloadProcessors = %d' % self.pp.payloadProcessors)
     self.cfg.append(
-        '-o "/Resources/Computing/CEDefaults/NumberOfProcessors=%d"' % int(numberOfProcessors))
+        '-o "/Resources/Computing/CEDefaults/NumberOfProcessors=%d"' % self.pp.payloadProcessors)
 
     maxRAM = self.pp.queueParameters.get('MaxRAM', maxRAM)
     if maxRAM:
@@ -557,19 +517,30 @@ class CheckWNCapabilities(CommandBase):
       self.log.warn(
           "Could not retrieve MaxRAM, this parameter won't be filled")
 
-    if cfg:
-      cfg.append('-FDMH')
+    # Add normal and required tags to the configuration
+    self.pp.tags = list(set(self.pp.tags))
+    if self.pp.tags:
+      self.cfg.append('-o "/Resources/Computing/CEDefaults/Tag=%s"' % ','.join((str(x) for x in self.pp.tags)))
 
-      if self.pp.useServerCertificate:
-        cfg.append('-o /DIRAC/Security/UseServerCertificate=yes')
-      if self.pp.localConfigFile:
-        cfg.append('-O %s' % self.pp.localConfigFile)  # this file is as output
-        cfg.append(self.pp.localConfigFile)  # this file is as input
+    self.pp.reqtags = list(set(self.pp.reqtags))
+    if self.pp.reqtags:
+      self.cfg.append('-o "/Resources/Computing/CEDefaults/RequiredTag=%s"' %
+                      ','.join((str(x) for x in self.pp.reqtags)))
 
-      if self.debugFlag:
-        cfg.append('-ddd')
+    if self.pp.useServerCertificate:
+      self.cfg.append('-o /DIRAC/Security/UseServerCertificate=yes')
 
-      configureCmd = "%s %s" % (self.pp.configureScript, " ".join(cfg))
+    if self.pp.localConfigFile:
+      self.cfg.append('-O %s' % self.pp.localConfigFile)  # this file is as output
+      self.cfg.append(self.pp.localConfigFile)  # this file is as input
+
+    if self.debugFlag:
+      self.cfg.append('-ddd')
+
+    if self.cfg:
+      self.cfg.append('-FDMH')
+
+      configureCmd = "%s %s" % (self.pp.configureScript, " ".join(self.cfg))
       retCode, _configureOutData = self.executeAndGetOutput(configureCmd, self.pp.installEnv)
       if retCode:
         self.log.error("Could not configure DIRAC [ERROR %d]" % retCode)
@@ -588,11 +559,6 @@ class ConfigureSite(CommandBase):
     # this variable contains the options that are passed to dirac-configure, and that will fill the local dirac.cfg file
     self.cfg = []
 
-    self.boincUserID = ''
-    self.boincHostID = ''
-    self.boincHostPlatform = ''
-    self.boincHostName = ''
-
   def execute(self):
     """ Setup configuration parameters
     """
@@ -602,8 +568,6 @@ class ConfigureSite(CommandBase):
     self.cfg.append('-n "%s"' % self.pp.site)
     self.cfg.append('-S "%s"' % self.pp.setup)
 
-    if not self.pp.ceName or not self.pp.queueName:
-      self.__getCEName()
     self.cfg.append('-N "%s"' % self.pp.ceName)
     self.cfg.append('-o /LocalSite/GridCE=%s' % self.pp.ceName)
     self.cfg.append('-o /LocalSite/CEQueue=%s' % self.pp.queueName)
@@ -616,16 +580,6 @@ class ConfigureSite(CommandBase):
 
     if self.pp.pilotReference != 'Unknown':
       self.cfg.append('-o /LocalSite/PilotReference=%s' % self.pp.pilotReference)
-    # add options for BOINc
-    # FIXME: this should not be part of the standard configuration
-    if self.boincUserID:
-      self.cfg.append('-o /LocalSite/BoincUserID=%s' % self.boincUserID)
-    if self.boincHostID:
-      self.cfg.append('-o /LocalSite/BoincHostID=%s' % self.boincHostID)
-    if self.boincHostPlatform:
-      self.cfg.append('-o /LocalSite/BoincHostPlatform=%s' % self.boincHostPlatform)
-    if self.boincHostName:
-      self.cfg.append('-o /LocalSite/BoincHostName=%s' % self.boincHostName)
 
     if self.pp.useServerCertificate:
       self.cfg.append('--UseServerCertificate')
@@ -727,21 +681,6 @@ class ConfigureSite(CommandBase):
       self.pp.flavour = 'VMDIRAC'
       pilotRef = 'vm://' + self.pp.ceName + '/' + os.environ['JOB_ID']
 
-    # This is for BOINC case
-    if 'BOINC_JOB_ID' in os.environ:
-      self.pp.flavour = 'BOINC'
-      pilotRef = os.environ['BOINC_JOB_ID']
-
-    if self.pp.flavour == 'BOINC':
-      if 'BOINC_USER_ID' in os.environ:
-        self.boincUserID = os.environ['BOINC_USER_ID']
-      if 'BOINC_HOST_ID' in os.environ:
-        self.boincHostID = os.environ['BOINC_HOST_ID']
-      if 'BOINC_HOST_PLATFORM' in os.environ:
-        self.boincHostPlatform = os.environ['BOINC_HOST_PLATFORM']
-      if 'BOINC_HOST_NAME' in os.environ:
-        self.boincHostName = os.environ['BOINC_HOST_NAME']
-
     # Pilot reference is given explicitly in environment
     if 'PILOT_UUID' in os.environ:
       pilotRef = os.environ['PILOT_UUID']
@@ -753,57 +692,6 @@ class ConfigureSite(CommandBase):
     self.log.debug("Flavour: %s; pilot reference: %s " % (self.pp.flavour, pilotRef))
 
     self.pp.pilotReference = pilotRef
-
-  def __getCEName(self):
-    """ Try to get the CE name
-    """
-    # FIXME: this should not be part of the standard configuration (flavours discriminations should stay out)
-    if self.pp.flavour in ['LCG', 'OSG']:
-      retCode, CEName = self.executeAndGetOutput('glite-brokerinfo getCE',
-                                                 self.pp.installEnv)
-      if retCode:
-        self.log.warn("Could not get CE name with 'glite-brokerinfo getCE' command [ERROR %d]" % retCode)
-        if 'OSG_JOB_CONTACT' in os.environ:
-          # OSG_JOB_CONTACT String specifying the endpoint to use within the job submission
-          #                 for reaching the site (e.g. manager.mycluster.edu/jobmanager-pbs )
-          CE = os.environ['OSG_JOB_CONTACT']
-          self.pp.ceName = CE.split('/')[0]
-          if len(CE.split('/')) > 1:
-            self.pp.queueName = CE.split('/')[1]
-          else:
-            self.log.error("CE Name %s not accepted" % CE)
-            self.exitWithError(retCode)
-        else:
-          self.log.info("Looking if queue name is already present in local cfg")
-          from DIRAC import gConfig
-          ceName = gConfig.getValue('LocalSite/GridCE', '')
-          ceQueue = gConfig.getValue('LocalSite/CEQueue', '')
-          if ceName and ceQueue:
-            self.log.debug("Found CE %s, queue %s" % (ceName, ceQueue))
-            self.pp.ceName = ceName
-            self.pp.queueName = ceQueue
-          else:
-            self.log.error("Can't find ceName nor queue... have to fail!")
-            sys.exit(1)
-      else:
-        self.log.debug("Found CE %s" % CEName)
-        self.pp.ceName = CEName.split(':')[0]
-        if len(CEName.split('/')) > 1:
-          self.pp.queueName = CEName.split('/')[1]
-      # configureOpts.append( '-N "%s"' % cliParams.ceName )
-
-    elif self.pp.flavour == "CREAM":
-      if 'CE_ID' in os.environ:
-        self.log.debug("Found CE %s" % os.environ['CE_ID'])
-        self.pp.ceName = os.environ['CE_ID'].split(':')[0]
-        if os.environ['CE_ID'].count("/"):
-          self.pp.queueName = os.environ['CE_ID'].split('/')[1]
-        else:
-          self.log.error("Can't find queue name")
-          sys.exit(1)
-      else:
-        self.log.error("Can't find CE name")
-        sys.exit(1)
 
 
 class ConfigureArchitecture(CommandBase):
@@ -1106,9 +994,9 @@ class MultiLaunchAgent(CommandBase):
 
     pid = {}
 
-    for i in xrange(self.pp.processors):
-
-      # One JobAgent per processor allocated to this pilot
+    for i in xrange(int(self.pp.pilotProcessors / self.pp.payloadProcessors)):
+      # One JobAgent per each set of payload processors, based on the
+      # number of processors allocated to this pilot, rounding downwards
 
       if self.pp.ceType == 'Sudo':
         # Available within the SudoComputingElement as BaseUsername in the ceParameters
@@ -1130,13 +1018,17 @@ class MultiLaunchAgent(CommandBase):
       if not pid[i]:
         self.log.error("Error executing the JobAgent %d" % i)
       else:
-        self.log.info("Forked JobAgent %02d/%d with PID %d" % (i, self.pp.processors, pid[i]))
+        self.log.info("Forked JobAgent %02d (%d/%d) with PID %d"
+                      % (i,
+                         i + 1,
+                         int(self.pp.pilotProcessors / self.pp.payloadProcessors),
+                         pid[i]))
 
     # Not very subtle this. How about a time limit??
-    for i in xrange(self.pp.processors):
+    for i in xrange(int(self.pp.pilotProcessors / self.pp.payloadProcessors)):
       os.waitpid(pid[i], 0)
 
-    for i in xrange(self.pp.processors):
+    for i in xrange(int(self.pp.pilotProcessors / self.pp.payloadProcessors)):
       shutdownMessage = self.__parseJobAgentLog(os.path.join(self.pp.workingDir, 'jobagent.%02d.log' % i))
       open(os.path.join(self.pp.workingDir, 'shutdown_message.%02d' % i), 'w').write(shutdownMessage)
       print shutdownMessage
@@ -1208,22 +1100,17 @@ class MultiLaunchAgent(CommandBase):
     ]
 
     try:
-      f = open(logFile, 'r')
+      with open(logFile, 'r') as f:
+        oneline = f.readline()
+        while oneline:
+          for pair in messageMappings:
+            if pair[0] in oneline:
+              shutdownMessage = pair[1]
+              break
+          oneline = f.readline()
+
     except BaseException:
       return '700 Internal VM logging failed'
-
-    oneline = f.readline()
-
-    while oneline:
-
-      for pair in messageMappings:
-        if pair[0] in oneline:
-          shutdownMessage = pair[1]
-          break
-
-      oneline = f.readline()
-
-    f.close()
 
     return shutdownMessage
 

@@ -1,9 +1,19 @@
 {
   "Setups": {
-    "Dirac-Certification": {
+    "DIRAC-Certification": {
       "CheckVersion": "True",
       "Commands": {
         "TEST": [
+          "CheckWorkerNode",
+          "InstallDIRAC",
+          "ConfigureBasics",
+          "CheckCECapabilities",
+          "CheckWNCapabilities",
+          "ConfigureSite",
+          "ConfigureArchitecture",
+          "ConfigureCPURequirements"
+        ],
+        "TEST-MP": [
           "CheckWorkerNode",
           "InstallDIRAC",
           "ConfigureBasics",
@@ -23,20 +33,15 @@
           "ConfigureArchitecture",
           "ConfigureCPURequirements",
           "LaunchAgent"
-        ],
-        "Vcycle": [
-          "CheckWorkerNode",
-          "LHCbInstallDIRAC",
-          "ConfigureBasics",
-          "ConfigureSite",
-          "ConfigureArchitecture",
-          "ConfigureCPURequirements",
-          "MultiLaunchAgent"
         ]
       },
       "Logging": {
-        "LoggingType":"LOCAL_FILE", 
-        "LocalOutputFile":"myFile"
+        "LoggingType":"REST_API", 
+        "LocalOutputFile":"myFile",
+        "HostKey":"/home/dirac/certs/hostkey.pem", 
+        "HostCertificate":"/home/dirac/certs/hostcert.pem",
+        "CACertificate":"/etc/pki/tls/certs/ca-bundle.crt", 
+        "Url":"https://pilotloggerrest.cern.ch:8888"
       },
       "NagiosProbes": "WN-mjf, WN-sft-csh, WN-sft-voms, WN-sft-vo-swdir",
       "Version": "VAR_DIRAC_VERSION",
@@ -55,13 +60,14 @@
           "ConfigureCPURequirements"
         ],
         "Defaults": [
-          "LHCbGetPilotVersion",
           "CheckWorkerNode",
-          "LHCbInstallDIRAC",
-          "LHCbConfigureBasics",
-          "LHCbConfigureSite",
-          "LHCbConfigureArchitecture",
-          "LHCbConfigureCPURequirements",
+          "InstallDIRAC",
+          "ConfigureBasics",
+          "CheckCECapabilities",
+          "CheckWNCapabilities",
+          "ConfigureSite",
+          "ConfigureArchitecture",
+          "ConfigureCPURequirements",
           "LaunchAgent"
         ]
       },
@@ -71,20 +77,16 @@
     }
   },
   "CEs": {
-    "VAR_JENKINS_CE": {
+    "jenkins.cern.ch": {
       "Site": "VAR_JENKINS_SITE",
       "Queue": "VAR_JENKINS_QUEUE",
       "GridCEType": "TEST"
     },
-    "jenkins-full.cern.ch": {
+    "jenkins-mp.cern.ch": {
       "Site": "VAR_JENKINS_SITE",
       "Queue": "VAR_JENKINS_QUEUE",
-      "GridCEType": "TEST-FULL"
-    },
-    "cygnus.grid.rug.nl": {
-      "Site": "LCG.RUG.nl",
-      "GridCEType": "CREAM"
+      "GridCEType": "TEST-MP"
     }
   },
-  "DefaultSetup": "Dirac-Certification"
+  "DefaultSetup": "DIRAC-Certification"
 }

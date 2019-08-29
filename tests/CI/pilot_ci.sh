@@ -12,12 +12,11 @@
 # A CI job needs:
 #
 # === environment variables (minimum set):
-# DEBUG
 # WORKSPACE
 #
 # === a default directory structure is created:
 # ~/TestCode
-# ~/ServerInstallDIR
+# ~/ClientInstallDIR
 # ~/PilotInstallDIR
 
 # you can try this out with:
@@ -25,12 +24,11 @@
 # bash
 # DEBUG=True
 # WORKSPACE=$PWD
-# PILOT_FILES='file:///home/toffo/pyDevs/Pilot/Pilot' #Change this!
 # mkdir $PWD/TestCode
 # cd $PWD/TestCode
 # mkdir Pilot
 # cd Pilot
-# cp -r ~/pyDevs/Pilot/* .
+# cp -r ~/pyDevs/Pilot/* .  # change this...
 # cd ../..
 # source TestCode/Pilot/tests/CI/pilot_ci.sh
 # fullPilot
@@ -53,15 +51,16 @@ else
 fi
 
 echo `pwd`
-echo $WORKSPACE
+echo -e $WORKSPACE
 # Creating default structure
 mkdir -p $WORKSPACE/TestCode # Where the test code resides
 TESTCODE=$_
-mkdir -p $WORKSPACE/ServerInstallDIR # Where servers are installed
-SERVERINSTALLDIR=$_
+mkdir -p $WORKSPACE/ClientInstallDIR # Where client are installed
+CLIENTINSTALLDIR=$_
 mkdir -p $WORKSPACE/PilotInstallDIR # Where pilots are installed
 PILOTINSTALLDIR=$_
-CLIENTINSTALLDIR=$PILOTINSTALLDIR
+mkdir -p $WORKSPACE/ServerInstallDIR # Where server is installed
+SERVERINSTALLDIR=$_
 
 # Sourcing utility file
 source $TESTCODE/Pilot/tests/CI/utilities.sh
@@ -77,7 +76,7 @@ function PilotInstall(){
   cd $PILOTINSTALLDIR
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $PILOTINSTALLDIR
+    echo -e 'ERROR: cannot change to ' $PILOTINSTALLDIR
     return
   fi
 
@@ -92,15 +91,16 @@ function PilotInstall(){
   sed -i "s#VAR_CS#$CSURL#g" pilot.json
   sed -i "s#VAR_USERDN#$DIRACUSERDN#g" pilot.json
 
+
   prepareForPilot
-  installStompRequestsIfNecessary
+  #installStompRequestsIfNecessary
   #preparePythonEnvironment
   python PilotLoggerTools.py PilotUUID
   python PilotLogger.py "Hello I am THE best pilot"
-  python PilotLogger.py "Getting DIRAC Pilot 3.0 code from lhcbproject for now..."
 
   # launch the pilot script
-  pilotOptions="-M 1 -S $DIRACSETUP -N $JENKINS_CE -Q $JENKINS_QUEUE -n $JENKINS_SITE --cert --certLocation=/home/dirac/certs --pilotLogging"
+  pilotOptions=$pilot_options
+  pilotOptions+=" -M 1 -S $DIRACSETUP -N $JENKINS_CE -Q $JENKINS_QUEUE -n $JENKINS_SITE --cert --certLocation=/home/dirac/certs"
   if [ $VO ]
   then
     pilotOptions+=" -l $VO -E $VO"
@@ -110,10 +110,13 @@ function PilotInstall(){
   then
     pilotOptions+=" -g "$lcgVersion
   fi
-  if [ $DEBUG ]
+  if [ $modules ]
   then
-    pilotOptions+=" -d"
+    pilotOptions+=" --modules="$modules
   fi
+  pilotOptions+=" --debug"
+
+  echo -e 'Running dirac-pilot.py ' $pilotOptions
   python dirac-pilot.py $pilotOptions
   if [ $? -ne 0 ]
   then
@@ -124,7 +127,7 @@ function PilotInstall(){
   cd $cwd
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $cwd
+    echo -e 'ERROR: cannot change to ' $cwd
     return
   fi
 }
@@ -198,8 +201,6 @@ function fullPilot(){
   fi
 }
 
-
-        
 function installStompRequestsIfNecessary()
 {
   local PYTHON_VERSION=`python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))'`
@@ -223,8 +224,8 @@ function installStompRequestsIfNecessary()
       fi
       python get-pip.py --user --upgrade
       echo "$PIP_LOC install --user 'stomp.py==4.1.11'"
-      `${PIP_LOC} install --user 'stomp.py==4.1.11'`
-      `${PIP_LOC} install --user 'requests'`
+      ${PIP_LOC} install --user 'stomp.py==4.1.11'
+      ${PIP_LOC} install --user 'requests'
   fi
   #stomp should be installed now
   python -c 'import stomp' > /dev/null 2>&1 ||{ echo >&2 "stomp installation failure. Aborting"; exit 1; }
@@ -259,11 +260,17 @@ function submitAndMatch(){
   cd $PILOTINSTALLDIR
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $PILOTINSTALLDIR
+    echo -e 'ERROR: cannot change to ' $PILOTINSTALLDIR
     return
   fi
   prepareForPilot
   default
+
+  if [ $DIRACOSVER ]
+  then
+    pilot_options=' --dirac-os --dirac-os-version='$DIRACOSVER
+    pilot_options+=' '
+  fi
 
   PilotInstall
   if [ $? -ne 0 ]

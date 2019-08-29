@@ -15,6 +15,15 @@
 
 import Queue
 import logging
+try:
+  import requests
+except ImportError:
+  requests = None
+try:
+  import stomp
+except ImportError:
+  stomp = None
+
 
 def loadAndCreateObject(moduleName, className, params):
   """
@@ -33,11 +42,11 @@ def loadAndCreateObject(moduleName, className, params):
     # In case of moduleName in the format of X.Y.Z, we have
     # mods =['X','Y','Z']. We are really interested in loading
     # 'Z' submodule.
-    mods = moduleName.split( '.' )
+    mods = moduleName.split('.')
     # The __import__ call with
     # fromlist option set to mods[-1]  will load Z submodule as expected.
     # Simpler X format will be also covered.
-    module = __import__(moduleName,globals(), locals(),mods[-1])
+    module = __import__(moduleName, globals(), locals(), mods[-1])
     try:
       myClass = getattr(module, className)
       if params:
@@ -74,16 +83,19 @@ def messageSenderFactory(senderType, params):
 
   """
   typeToModuleAndClassName = {
-    'LOCAL_FILE': {'module': 'MessageSender', 'class': 'LocalFileSender'},
-    'MQ': {'module': 'MessageSender', 'class': 'StompSender'},
-    'REST_API': {'module': 'MessageSender', 'class': 'RESTSender'}
+      'LOCAL_FILE': {'module': 'MessageSender', 'class': 'LocalFileSender'},
+      'MQ': {'module': 'MessageSender', 'class': 'StompSender'},
+      'REST_API': {'module': 'MessageSender', 'class': 'RESTSender'}
   }
   try:
     moduleName = typeToModuleAndClassName[senderType]['module']
     className = typeToModuleAndClassName[senderType]['class']
+
+    logging.debug("Trying to load and create object of module: %s, class: %s, params: %s",
+                  str(moduleName), str(className), str(params))
     return loadAndCreateObject(moduleName, className, params)
   except ValueError:
-    logging.error("Error initializing the message sender")
+    logging.error("Error initializing the message sender of type %s", senderType)
   return None
 
 
@@ -119,19 +131,20 @@ class RESTSender(MessageSender):
   """ Message sender to a REST interface.
       It depends on requests module.
   """
-  import requests
 
-  REQUIRED_KEYS = ['HostKey', 'HostCertififcate',
+  REQUIRED_KEYS = ['HostKey', 'HostCertificate',
                    'CACertificate', 'Url', 'LocalOutputFile']
 
   def __init__(self, params):
     """
       Raises:
-        ValueError: If params are not correct.
+        ValueError: If params are not correct
     """
+    logging.debug("in init of RESTSender")
     self._areParamsCorrect = createParamChecker(self.REQUIRED_KEYS)
     self.params = params
     if not self._areParamsCorrect(self.params):
+      logging.error("Parameters missing needed to send messages! Parameters:%s", str(self.params))
       raise ValueError("Parameters missing needed to send messages")
 
   def sendMessage(self, msg, flag):
@@ -140,11 +153,12 @@ class RESTSender(MessageSender):
     hostCertificate = self.params.get('HostCertificate')
     CACertificate = self.params.get('CACertificate')
 
+    logging.debug("sending message from the REST Sender")
     try:
       requests.post(url,
                     json=msg,
                     cert=(hostCertificate, hostKey),
-                    verify=CACertificate)
+                    verify=False)
     except (requests.exceptions.RequestException, IOError) as e:
       logging.error(e)
       return False
@@ -162,7 +176,7 @@ def saveMessageToFile(msg, filename='myLocalQueueOfMessages'):
   """ Adds the message to a file appended as a next line.
   """
   with open(filename, 'a+') as myFile:
-    myFile.write(msg+'\n')
+    myFile.write(msg + '\n')
 
 
 def readMessagesFromFileAndEraseFileContent(filename='myLocalQueueOfMessages'):
@@ -192,22 +206,26 @@ class LocalFileSender(MessageSender):
       Raises:
         ValueError: If params are not correct.
     """
+    logging.debug("in init of LocalFileSender")
     self._areParamsCorrect = createParamChecker(self.REQUIRED_KEYS)
     self.params = params
     if not self._areParamsCorrect(self.params):
+      logging.error("Parameters missing needed to send messages! Parameters:%s", str(self.params))
       raise ValueError("Parameters missing needed to send messages")
 
   def sendMessage(self, msg, flag):
+    logging.debug("in sendMessage of LocalFileSender")
     filename = self.params.get('LocalOutputFile')
     saveMessageToFile(msg, filename=filename)
     return True
+
 
 class StompSender(MessageSender):
   """ Stomp message sender.
       It depends on stomp module.
   """
-  import stomp
-  REQUIRED_KEYS = ['HostKey', 'HostCertififcate',
+
+  REQUIRED_KEYS = ['HostKey', 'HostCertificate',
                    'CACertificate', 'QueuePath', 'LocalOutputFile']
 
   def __init__(self, params):
@@ -219,6 +237,7 @@ class StompSender(MessageSender):
     self._areParamsCorrect = createParamChecker(self.REQUIRED_KEYS)
     self.params = params
     if not self._areParamsCorrect(self.params):
+      logging.error("Parameters missing needed to send messages! Parameters:%s", str(self.params))
       raise ValueError("Parameters missing needed to send messages")
 
   def sendMessage(self, msg, flag):
@@ -244,7 +263,7 @@ class StompSender(MessageSender):
 
     saveMessageToFile(msg, filename)
     connection = self._connect((host, port), {
-      'key_file': hostKey, 'cert_file': hostCertificate, 'ca_certs': CACertificate})
+        'key_file': hostKey, 'cert_file': hostCertificate, 'ca_certs': CACertificate})
     if not connection:
       return False
     self._sendAllLocalMessages(connection, queue, filename)
@@ -256,12 +275,12 @@ class StompSender(MessageSender):
         handler or None in case of connection down.
         Stomp-depended function.
     Args:
-      hostAndPort(list): of tuples, containing ip address and the port 
-                         where the message broker is listening for stomp 
+      hostAndPort(list): of tuples, containing ip address and the port
+                         where the message broker is listening for stomp
                          connections. e.g. [(127.0.0.1,6555)]
-      sslCfg(dict): with three keys 'key_file', 'cert_file', and 'ca_certs'. 
+      sslCfg(dict): with three keys 'key_file', 'cert_file', and 'ca_certs'.
     Return:
-      stomp.Connection: or None in case of errors. 
+      stomp.Connection: or None in case of errors.
     """
     if not sslCfg:
       logging.error("sslCfg argument is None")
@@ -289,7 +308,6 @@ class StompSender(MessageSender):
       logging.error('Could not find files with ssl certificates')
       return None
 
-
   def _send(self, msg, destination, connectHandler):
     """Sends a message and logs info.
        Stomp-depended function.
@@ -301,13 +319,11 @@ class StompSender(MessageSender):
     logging.info(" [x] Sent %r ", msg)
     return True
 
-
   def _disconnect(self, connectHandler):
     """Disconnects.
        Stomp-depended function.
     """
     connectHandler.disconnect()
-
 
   def _sendAllLocalMessages(self, connectHandler, destination, filename):
     """ Retrieves all messages from the local storage
