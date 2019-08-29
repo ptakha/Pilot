@@ -156,7 +156,7 @@ class RESTSender(MessageSender):
 
     logging.debug("sending message from the REST Sender")
     try:
-      if isinstance(requests, None):
+      if requests is None:
         request = Wasser(hostCertificate, hostKey, CACertificate)
         request.post(url, msg)
       else:
