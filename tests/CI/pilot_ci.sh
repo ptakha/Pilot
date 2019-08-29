@@ -12,12 +12,11 @@
 # A CI job needs:
 #
 # === environment variables (minimum set):
-# DEBUG
 # WORKSPACE
 #
 # === a default directory structure is created:
 # ~/TestCode
-# ~/ServerInstallDIR
+# ~/ClientInstallDIR
 # ~/PilotInstallDIR
 
 # you can try this out with:
@@ -25,19 +24,18 @@
 # bash
 # DEBUG=True
 # WORKSPACE=$PWD
-# PILOT_FILES='file:///home/toffo/pyDevs/Pilot/Pilot' #Change this!
 # mkdir $PWD/TestCode
 # cd $PWD/TestCode
 # mkdir Pilot
 # cd Pilot
-# cp -r ~/pyDevs/Pilot/* .
+# cp -r ~/pyDevs/Pilot/* .  # change this...
 # cd ../..
 # source TestCode/Pilot/tests/CI/pilot_ci.sh
 # fullPilot
 
 # Def of environment variables:
 
-if [ ! -z "$DEBUG" ]
+if [ ! -z "${DEBUG:-}" ]
 then
   echo '==> Running in DEBUG mode'
   DEBUG='-ddd'
@@ -45,7 +43,7 @@ else
   echo '==> Running in non-DEBUG mode'
 fi
 
-if [ ! -z "$WORKSPACE" ]
+if [ ! -z "${WORKSPACE:-}" ]
 then
   echo '==> We are in Jenkins I guess'
 else
@@ -53,15 +51,16 @@ else
 fi
 
 echo `pwd`
-echo $WORKSPACE
+echo -e $WORKSPACE
 # Creating default structure
 mkdir -p $WORKSPACE/TestCode # Where the test code resides
 TESTCODE=$_
-mkdir -p $WORKSPACE/ServerInstallDIR # Where servers are installed
-SERVERINSTALLDIR=$_
+mkdir -p $WORKSPACE/ClientInstallDIR # Where client are installed
+CLIENTINSTALLDIR=$_
 mkdir -p $WORKSPACE/PilotInstallDIR # Where pilots are installed
 PILOTINSTALLDIR=$_
-CLIENTINSTALLDIR=$PILOTINSTALLDIR
+mkdir -p $WORKSPACE/ServerInstallDIR # Where server is installed
+SERVERINSTALLDIR=$_
 
 # Sourcing utility file
 source $TESTCODE/Pilot/tests/CI/utilities.sh
@@ -70,6 +69,7 @@ source $TESTCODE/Pilot/tests/CI/utilities.sh
 # basically it just calls the pilot wrapper
 # don't launch the JobAgent here
 function PilotInstall(){
+  echo '==> [PilotInstall]'
 
   default
 
@@ -77,7 +77,7 @@ function PilotInstall(){
   cd $PILOTINSTALLDIR
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $PILOTINSTALLDIR
+    echo -e 'ERROR: cannot change to ' $PILOTINSTALLDIR
     return
   fi
 
@@ -93,9 +93,14 @@ function PilotInstall(){
   sed -i "s#VAR_USERDN#$DIRACUSERDN#g" pilot.json
 
   prepareForPilot
+  #installStompRequestsIfNecessary
+  #preparePythonEnvironment
+  #python PilotLoggerTools.py PilotUUID
+  #python PilotLogger.py "Hello I am THE best pilot"
 
   # launch the pilot script
-  pilotOptions="-M 1 -S $DIRACSETUP -N $JENKINS_CE -Q $JENKINS_QUEUE -n $JENKINS_SITE --cert --certLocation=/home/dirac/certs"
+  pilotOptions=$pilot_options
+  pilotOptions+=" -M 1 -S $DIRACSETUP -N $JENKINS_CE -Q $JENKINS_QUEUE -n $JENKINS_SITE --cert --certLocation=/home/dirac/certs"
   if [ $VO ]
   then
     pilotOptions+=" -l $VO -E $VO"
@@ -105,10 +110,13 @@ function PilotInstall(){
   then
     pilotOptions+=" -g "$lcgVersion
   fi
-  if [ $DEBUG ]
+  if [ $modules ]
   then
-    pilotOptions+=" -d"
+    pilotOptions+=" --modules="$modules
   fi
+  pilotOptions+=" --debug"
+
+  echo -e 'Running dirac-pilot.py ' $pilotOptions
   python dirac-pilot.py $pilotOptions
   if [ $? -ne 0 ]
   then
@@ -119,13 +127,16 @@ function PilotInstall(){
   cd $cwd
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $cwd
+    echo -e 'ERROR: cannot change to ' $cwd
     return
   fi
+
+  echo '==> [Done PilotInstall]'
 }
 
 
 function fullPilot(){
+  echo '==> [fullPilot]'
 
   #first simply install via the pilot
   PilotInstall
@@ -191,8 +202,46 @@ function fullPilot(){
     echo 'ERROR: cannot run dirac-configure'
     return
   fi
+
+  echo '==> [Done fullPilot]'
 }
 
+
+function installStompRequestsIfNecessary()
+{
+  echo '==> [installStompRequestsIfNecessary]'
+
+  local PYTHON_VERSION=`python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))'`
+  #checking if stomp is installed
+  if ! python -c 'import stomp' > /dev/null 2>&1; then
+      #checking if pip is installed
+      #if ! type python -m pip > /dev/null 2>&1; then
+          #type yum > /dev/null 2>&1 || { echo >&2 "yum installer is required. Aborting"; exit 1; }
+          #yum -y install python-pip
+      #fi
+      mkdir myLocal
+      export PYTHONUSERBASE=${PWD}/myLocal
+      python -c 'import site' # crazy hack to setup sys.path with the local directories 
+      local USER_SITE_PACKAGE_BASE=$(python -m site --user-base)
+      local PIP_LOC=$USER_SITE_PACKAGE_BASE/bin/pip
+      echo "PIP_LOC: $PIP_LOC"
+      if [ "$PYTHON_VERSION" = '2.6' ]; then
+        curl https://bootstrap.pypa.io/2.6/get-pip.py -o get-pip.py
+      else 
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+      fi
+      python get-pip.py --user --upgrade
+      echo "$PIP_LOC install --user 'stomp.py==4.1.11'"
+      ${PIP_LOC} install --user 'stomp.py==4.1.11'
+      ${PIP_LOC} install --user 'requests'
+  fi
+  #stomp should be installed now
+  python -c 'import stomp' > /dev/null 2>&1 ||{ echo >&2 "stomp installation failure. Aborting"; exit 1; }
+  #requests should be installed now
+  python -c 'import requests' > /dev/null 2>&1 ||{ echo >&2 "requests installation failure. Aborting"; exit 1; }
+
+  echo '==> [Done installStompRequestsIfNecessary]'
+}
 
 ####################################################################################
 # submitAndMatch
@@ -201,6 +250,7 @@ function fullPilot(){
 # then we run a pilot that should hopefully match those jobs
 
 function submitAndMatch(){
+  echo '==> [submitAndMatch]'
 
   # Here we submit the jobs (to DIRAC.Jenkins.ch)
   installDIRAC # This installs the DIRAC client
@@ -221,11 +271,17 @@ function submitAndMatch(){
   cd $PILOTINSTALLDIR
   if [ $? -ne 0 ]
   then
-    echo 'ERROR: cannot change to ' $PILOTINSTALLDIR
+    echo -e 'ERROR: cannot change to ' $PILOTINSTALLDIR
     return
   fi
   prepareForPilot
   default
+
+  if [ $DIRACOSVER ]
+  then
+    pilot_options=' --dirac-os --dirac-os-version='$DIRACOSVER
+    pilot_options+=' '
+  fi
 
   PilotInstall
   if [ $? -ne 0 ]
@@ -233,4 +289,6 @@ function submitAndMatch(){
     echo 'ERROR: dirac-pilot failure'
     return
   fi
+
+  echo '==> [Done submitAndMatch]'
 }
