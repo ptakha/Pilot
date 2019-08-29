@@ -19,6 +19,7 @@ try:
   import requests
 except ImportError:
   requests = None
+  from wasser import Wasser
 try:
   import stomp
 except ImportError:
@@ -155,10 +156,14 @@ class RESTSender(MessageSender):
 
     logging.debug("sending message from the REST Sender")
     try:
-      requests.post(url,
-                    json=msg,
-                    cert=(hostCertificate, hostKey),
-                    verify=False)
+      if isinstance(requests, None):
+        request = Wasser(hostCertificate, hostKey, CACertificate)
+        request.post(url, msg)
+      else:
+        requests.post(url,
+                      json=msg,
+                      cert=(hostCertificate, hostKey),
+                      verify=False)
     except (requests.exceptions.RequestException, IOError) as e:
       logging.error(e)
       return False
