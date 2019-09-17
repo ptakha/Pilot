@@ -15,10 +15,7 @@
 
 import Queue
 import logging
-try:
-  import requests
-except ImportError:
-  import wasser as requests
+import wasser as requests
 try:
   import stomp
 except ImportError:
@@ -156,8 +153,7 @@ class RESTSender(MessageSender):
     logging.debug("sending message from the REST Sender")
     try:
         requests.post(url, msg, (hostCertificate, hostKey), CACertificate)
-    except (requests.exceptions.RequestException,
-            requests.RequestException,IOError) as e:
+    except (requests.RequestException,IOError) as e:
       logging.error(e)
       return False
     return True
