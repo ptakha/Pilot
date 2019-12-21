@@ -12,10 +12,15 @@
     myLocalSender.sendMessage("blabla", "myFlag")
 
     """
-
+import sys
 import Queue
 import logging
-import wasser as requests
+def isPython2_6():
+  return sys.version_info[0]==2 and sys.version_info[1]==6
+if isPython2_6():
+    import wasser as requests
+else:
+    import requests
 try:
   import stomp
 except ImportError:
@@ -151,11 +156,19 @@ class RESTSender(MessageSender):
     CACertificate = self.params.get('CACertificate')
 
     logging.debug("sending message from the REST Sender")
-    try:
-        requests.post(url, msg, (hostCertificate, hostKey), CACertificate)
-    except (requests.RequestException,IOError) as e:
-      logging.error(e)
-      return False
+    if isPython2_6():
+        try:
+            requests.post(url, msg, (hostCertificate, hostKey), CACertificate)
+        except (requests.RequestException,IOError) as e:
+          logging.error(e)
+          return False
+    else:
+        try:
+            requests.post(url, json=msg, cert=(hostCertificate, hostKey),
+                          verify=CACertificate)
+        except (requests.exceptions.RequestException,IOError) as e:
+          logging.error(e)
+          return False
     return True
 
 
