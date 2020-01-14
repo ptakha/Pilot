@@ -16,7 +16,7 @@ import sys
 import Queue
 import logging
 def isPython2_6():
-  return sys.version_info[0]==2 and sys.version_info[1]==6
+  return True #sys.version_info[0]==2 and sys.version_info[1]==6
 if isPython2_6():
     import wasser as requests
 else:
@@ -159,6 +159,7 @@ class RESTSender(MessageSender):
     if isPython2_6():
         try:
             requests.post(url, msg, (hostCertificate, hostKey), CACertificate)
+            print('Python 2.6')
         except (requests.RequestException,IOError) as e:
           logging.error(e)
           return False

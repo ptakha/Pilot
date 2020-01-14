@@ -54,7 +54,7 @@ class SimpleServer(object):
                 if re.search('^GET {0} HTTP/1.1'.format(path), data):
                     self.get(path)
                 if re.search('^POST {0} HTTP/1.1'.format(path), data):
-                    [head, self.message] = data.split('\n\n')
+                    [head, self.message] = data.split('\r\n\r\n')
                     self.post(path)
             self.ssl_socket.close()
         except ssl.SSLError as e:

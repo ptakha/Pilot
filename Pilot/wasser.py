@@ -21,6 +21,7 @@ class RequestException(Exception):
         return '\nProblem with connecting to this url:\n{0}\nProblem:\n{1}'.format(self.url, self.message)
 
 
+
 def post(url, data, cert, verify='certs/CAcert.pem'):
     """
     POST method for https request, please provide:
@@ -74,7 +75,7 @@ def post(url, data, cert, verify='certs/CAcert.pem'):
         message = str(data)
         message_len = len(message)
         content_type = 'text/plain'
-    request_body = "POST {0} HTTP/1.1\nContent-Type: {1}\nContent-Length: {2}\n\n{3}".format(path, content_type, message_len, message)
+    request_body = "POST {0} HTTP/1.1\nContent-Type: {1}\nContent-Length:{2}\r\n\r\n{3}".format(path, content_type, message_len, message)
     ssl_socket.send(request_body)
     response = ssl_socket.recv()
     ssl_socket.close()
@@ -126,11 +127,3 @@ def get(url, cert, verify='certs/CAcert.pem'):
     ssl_socket.close()
     return response
 
-
-
-
-if __name__ == '__main__':
-    test_json = {'wasser':'stein'}
-    print '\nGET request, normal certificate\n'
-    print get('https://localhost:1027/',
-              ('certs/user.crt', 'certs/user.key'))
